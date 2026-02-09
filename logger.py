@@ -9,6 +9,8 @@ from omegaconf import OmegaConf
 import torch
 from termcolor import colored
 
+import numpy as np
+
 COMMON_TRAIN_FORMAT = [
     ("frame", "F", "int"),
     ("step", "S", "int"),
@@ -97,6 +99,8 @@ class MetersGroup(object):
         self._csv_file.flush()
 
     def _format(self, key, value, ty):
+        if isinstance(value, np.ndarray):
+            return f"{key}: {value}"
         if ty == "int":
             value = int(value)
             return f"{key}: {value}"

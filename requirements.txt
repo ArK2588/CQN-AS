@@ -1,0 +1,16 @@
+torch
+tensordict
+packaging
+termcolor
+imageio
+imageio_ffmpeg
+hydra-core
+hydra-submitit-launcher
+opencv-python-headless
+tensorboard
+dm_env
+dm_control
+gymnasium
+wandb
+mujoco
+numpy==2.2.6
