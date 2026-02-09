@@ -12,7 +12,7 @@ action_sequence: 4
 num_seed_frames: 0
 # eval
 eval_every_frames: 2500
-num_eval_episodes: 1
+num_eval_episodes: 10
 # snapshot
 save_snapshot: false
 save_policy_every_frames: 25000

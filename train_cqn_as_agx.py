@@ -168,10 +168,14 @@ class Workspace:
     def eval(self):
         """We use train env for evaluation, because it's convenient"""
         step, episode, total_reward = 0, 0, 0
+        num_rock_lifted = 0
+        num_fall_down = 0
+        num_success = 0
         eval_until_episode = utils.Until(self.cfg.num_eval_episodes)
 
         while eval_until_episode(episode):
             episode_step = 0
+            episode_rock_lifted = False
             time_step = self.train_env.reset()
             if self.cfg.temporal_ensemble:
                 self.eval_temporal_ensemble.reset()
@@ -198,9 +202,19 @@ class Workspace:
                 time_step = self.train_env.step(sub_action)
                 self.video_recorder.record(self.train_env)
                 total_reward += time_step.reward
+                if time_step.reward[0] >= 0:
+                    episode_rock_lifted = True
                 step += 1
                 episode_step += 1
 
+            # success check at final timestep
+            final_lifted = time_step.reward[0] >= 0
+            if episode_rock_lifted:
+                num_rock_lifted += 1
+            if final_lifted:
+                num_success += 1
+            if episode_rock_lifted and not final_lifted:
+                num_fall_down += 1
             episode += 1
             self.video_recorder.save(f"{self.global_frame}.mp4")
 
@@ -209,6 +223,9 @@ class Workspace:
             log("episode_length", step * self.cfg.action_repeat / episode)
             log("episode", self.global_episode)
             log("step", self.global_step)
+            log("rock_lifted_ratio", num_rock_lifted / episode) # rock lifted atleast once in the episode
+            log("success_ratio", num_success / episode) # task solved
+            log("fall_down_ratio", num_fall_down / episode) # rocked lifted but dropped later
 
     def train(self):
         # predicates

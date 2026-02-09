@@ -820,6 +820,9 @@ class CQNASAgent:
             q_critic_loss=q_critic_loss.detach(),
             bc_margin_loss=margin_loss.detach(),
             bc_fosd_loss=bc_fosd_loss.detach(),
+            q_value_mean=qs_a.mean().detach(),
+            q_value_max=qs_a.max().detach(),
+            q_value_min=qs_a.min().detach(),
         )
 
     def update(self, batch):
