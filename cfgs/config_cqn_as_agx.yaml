@@ -70,7 +70,7 @@ agent:
   gru_layers: 1
   rgb_encoder_layers: 0 #0
   use_parallel_impl: true #false  # useful in powerful GPUs
-  v_min: -10.0 #changed from -2.0 to match negative reward setup # maybe -1.0/1.0?
+  v_min: -2.0 # maybe -1.0/1.0?
   v_max: 2.0
   critic_lambda: 0.1
   stddev_schedule: 0.01
@@ -80,8 +80,8 @@ agent:
 
 wandb:
   project: cqn
-  entity: ujvjm-karlsruhe-institute-of-technology
-  name: test-run
+  entity: offline2online_praktikum2526
+  name: Vision-sparse-rewards
 
 hydra:
   run:

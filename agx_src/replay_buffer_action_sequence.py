@@ -86,7 +86,7 @@ class ReplayBufferStorage:
 
     def _check_if_successful(self, episode):
         reward = episode["reward"]
-        return np.isclose(reward[-1], 0.0) and not np.all(np.isclose(reward, -1.0))
+        return np.isclose(reward[-1], 1.0)
 
     def _preload(self):
         self._num_episodes = 0

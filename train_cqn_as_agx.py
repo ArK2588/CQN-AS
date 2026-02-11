@@ -202,13 +202,13 @@ class Workspace:
                 time_step = self.train_env.step(sub_action)
                 self.video_recorder.record(self.train_env)
                 total_reward += time_step.reward
-                if time_step.reward[0] >= 0:
+                if time_step.reward[0] > 0:
                     episode_rock_lifted = True
                 step += 1
                 episode_step += 1
 
             # success check at final timestep
-            final_lifted = time_step.reward[0] >= 0
+            final_lifted = time_step.reward[0] > 0
             if episode_rock_lifted:
                 num_rock_lifted += 1
             if final_lifted:

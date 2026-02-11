@@ -272,9 +272,9 @@ class AGXEnv:
     def _compute_reward(self, obs_dict):
         if self._reward_type == "sparse":
             if _to_numpy(obs_dict["stone"]).reshape(-1)[2] >= self._stone_height_threshold:
-                return 0
+                return 1
             else:
-                return -1
+                return 0
         else:
             # TODO
             z = _to_numpy(obs_dict["stone"]).reshape(-1)[2]
@@ -373,7 +373,7 @@ class AGXEnv:
             if i == 0:
                 action = np.zeros(self.action_space.shape, dtype=np.float32)
                 step_type = StepType.FIRST
-                reward = -1.0
+                reward = 0.0
                 discount = 1.0
             else:
                 action = _to_numpy(traj[i - 1]["action"]).reshape(-1).astype(np.float32)
@@ -390,7 +390,7 @@ class AGXEnv:
                     if self._reward_type == "sparse":
                         discount = 1.0
                     else:
-                        discount = 0.0 if reward >= 0 else 1.0
+                        discount = 0.0 if reward > 0 else 1.0
 
             timesteps.append(
                 ExtendedTimeStep(
