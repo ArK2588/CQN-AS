@@ -236,8 +236,8 @@ class AGXEnv:
     def _build_rgb_raw(self, obs_dict):
         # support resized images
         img = _to_numpy(obs_dict["camera"]["rgb"])
+        img = img.astype(np.uint8, copy=False)
         if img.shape[-2:] != self._camera_shape:
-            img = img.astype(np.uint8, copy=False)
             img = resize_chw_image(img, self._camera_shape)
         self._last_render = img
         return img[None, ...] # (1,3,H,W)

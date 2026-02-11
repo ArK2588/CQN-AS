@@ -171,7 +171,13 @@ class Workspace:
         num_rock_lifted = 0
         num_fall_down = 0
         num_success = 0
-        terminations_info = {}
+        terminations_info = {
+            "max_steps": 0,
+            "too_deep_termination": 0,
+            "stone_x_distance_termination": 0,
+            "stone_height_termination": 0,
+            "cabin_pitch_termination": 0,
+        }
         eval_until_episode = utils.Until(self.cfg.num_eval_episodes)
 
         while eval_until_episode(episode):
