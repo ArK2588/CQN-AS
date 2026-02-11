@@ -145,6 +145,9 @@ class AGXEnv:
         self._reward_type = reward_type
         self._state_based_only = state_based_only
         self._last_termination_info = {}
+        self._prev_obs_dict = None
+        self._lift_weight = 0.5
+        self._bucket_approach_weight = 0.3
 
 
         cfg = parse_env_cfg(
@@ -270,25 +273,38 @@ class AGXEnv:
 
         return {"low_dim_obs": low_stacked, "rgb_obs": rgb_stacked}
     
-    def _compute_reward(self, obs_dict):
+    def _compute_reward(self, obs_dict, prev_obs_dict=None):
         if self._reward_type == "sparse":
             if _to_numpy(obs_dict["stone"]).reshape(-1)[2] >= self._stone_height_threshold:
                 return 1
             else:
                 return 0
         else:
-            # TODO
-            z = _to_numpy(obs_dict["stone"]).reshape(-1)[2]
+            stone_height = _to_numpy(obs_dict["stone"]).reshape(-1)[2]
 
-            # distance to target height
-            dist = z - self._stone_height_threshold
-            reward = -abs(dist)
+            def lift_term(stone_height):
+                return np.clip((stone_height)/(self._stone_height_threshold),0.0, 1.0)
 
-            # If proper height reached
-            if z >= 1.5:
-                reward += 10
+            def approach_term(obs):
+                bucket = _to_numpy(obs["bucket"]).reshape(-1)
+                stone = _to_numpy(obs["stone"]).reshape(-1)
+                dist = np.linalg.norm(bucket - stone)
+                return 1.0/(1.0+dist)
+            
+            if prev_obs_dict is not None:
+                prev_stone_height = _to_numpy(prev_obs_dict["stone"]).reshape(-1)[2]
+                lift_change = lift_term(stone_height) - lift_term(prev_stone_height)
+                approach_change = approach_term(obs_dict) - approach_term(prev_obs_dict)
+            else:
+                lift_change = 0.0
+                approach_change = 0.0
+            
+            #final success bonus
+            success_bonus = 1.0 if stone_height >= self._stone_height_threshold else 0.0
 
-        return reward
+            reward = self._lift_weight * lift_change + self._bucket_approach_weight * approach_change + success_bonus
+
+            return reward
         
     def reset(self, **kwargs):
         self._low_dim_obses.clear()
@@ -296,9 +312,11 @@ class AGXEnv:
             q.clear()
 
         obs, info = self._env.reset(**kwargs)
+        obs_dict = obs
         obs = self._extract_obs(obs)
         self._step_counter = 0
         self._last_termination_info = {}
+        self._prev_obs_dict = obs_dict
 
         return TimeStep(
             rgb_obs=obs["rgb_obs"],
@@ -321,12 +339,8 @@ class AGXEnv:
         done = bool(terminated or truncated)
         step_type = StepType.LAST if done else StepType.MID
 
-        # sparse reward
-        reward = self._compute_reward(obs_dict)
-
-        # verify if we actually get terminted correctly from agx
-        # if self._reward_type == "sparse" and reward == 0:
-        #     terminated = True
+        reward = self._compute_reward(obs_dict, self._prev_obs_dict)
+        self._prev_obs_dict = obs_dict
 
         # discount=0 only on success
         # potential fix to the issue where agent learns to trigger unsafe terminations as reward hack
@@ -384,20 +398,15 @@ class AGXEnv:
                 discount = 1.0
             else:
                 action = _to_numpy(traj[i - 1]["action"]).reshape(-1).astype(np.float32)
+                prev_obs_dict = traj[i - 1]
                 if i == T - 1:
                     step_type = StepType.LAST
-                    reward = self._compute_reward(obs_dict)
-                    if self._reward_type != "sparse":
-                        if _to_numpy(obs_dict["stone"]).reshape(-1)[2] >= self._stone_height_threshold:
-                            reward = 200.0
+                    reward = self._compute_reward(obs_dict, prev_obs_dict)
                     discount = 0.0
                 else:
                     step_type = StepType.MID
-                    reward = self._compute_reward(obs_dict)
-                    if self._reward_type == "sparse":
-                        discount = 1.0
-                    else:
-                        discount = 0.0 if reward > 0 else 1.0
+                    reward = self._compute_reward(obs_dict, prev_obs_dict)
+                    discount = 1.0
 
             timesteps.append(
                 ExtendedTimeStep(
