@@ -326,8 +326,14 @@ class AGXEnv:
         # if self._reward_type == "sparse" and reward == 0:
         #     terminated = True
 
-        # rlbench semantics -> discount=0 if true termination
-        discount = float(1 - bool(terminated))
+        # discount=0 only on success
+        # potential fix to the issue where agent learns to trigger unsafe terminations as reward hack
+        extras = info.get("extras", {})
+        success_flag = bool(extras.get("Episode_Termination/stone_height_termination", 0))
+        if terminated and success_flag:
+            discount = 0.0
+        else:
+            discount = 1.0
 
         return TimeStep(
             rgb_obs=obs["rgb_obs"],
