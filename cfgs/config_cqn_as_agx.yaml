@@ -37,7 +37,7 @@ lr: 5e-5
 weight_decay: 0.1
 feature_dim: 64
 num_update_steps: 1
-use_compile: true
+use_compile: true # try otherwise fallback to false
 
 episode_length: 600
 num_train_frames: 1000000
@@ -47,8 +47,8 @@ dataset_root: /datasets/demonstrations_downscaled_reseted_env_84x84 #${hydra:run
 stone_height_threshold: 1.5
 camera_shape: [84, 84]
 task_name: AgxCave-Rock-Capturing-Vision-v0
-reward_type: sparse
-state_based_only: true #false
+reward_type: sparse # try dense
+state_based_only: false #true
 
 agent:
   _target_: agx_src.cqn_as.CQNASAgent
