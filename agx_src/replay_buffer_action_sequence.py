@@ -291,5 +291,7 @@ def make_replay_loader(
         num_workers=num_workers,
         pin_memory=True,#False,
         worker_init_fn=_worker_init_fn,
+        persistent_workers=True if num_workers > 0 else False,
+        prefetch_factor=4 if num_workers > 0 else None,
     )
     return loader

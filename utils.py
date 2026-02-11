@@ -76,7 +76,7 @@ def to_torch_pixel_tensor_dict(xs, device):
         next_rgb_obs,
         next_low_dim_obs,
         demos,
-    ) = tuple(torch.as_tensor(x, device=device, dtype=torch.float) for x in xs)
+    ) = tuple(torch.as_tensor(x, dtype=torch.float).to(device, non_blocking=True) for x in xs)
     batch = TensorDict(
         rgb_obs=rgb_obs,
         low_dim_obs=low_dim_obs,
