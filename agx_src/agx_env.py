@@ -144,6 +144,7 @@ class AGXEnv:
         self._frames = {"rgb": deque([], maxlen=self._frame_stack)}
         self._reward_type = reward_type
         self._state_based_only = state_based_only
+        self._last_termination_info = {}
 
 
         cfg = parse_env_cfg(
@@ -297,6 +298,7 @@ class AGXEnv:
         obs, info = self._env.reset(**kwargs)
         obs = self._extract_obs(obs)
         self._step_counter = 0
+        self._last_termination_info = {}
 
         return TimeStep(
             rgb_obs=obs["rgb_obs"],
@@ -329,6 +331,11 @@ class AGXEnv:
         # discount=0 only on success
         # potential fix to the issue where agent learns to trigger unsafe terminations as reward hack
         extras = info.get("extras", {})
+        self._last_termination_info = {
+            k.replace("Episode_Termination/", ""): int(v)
+            for k, v in extras.items()
+            if k.startswith("Episode_Termination/")
+        }
         success_flag = bool(extras.get("Episode_Termination/stone_height_termination", 0))
         if terminated and success_flag:
             discount = 0.0

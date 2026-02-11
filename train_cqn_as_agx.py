@@ -171,6 +171,7 @@ class Workspace:
         num_rock_lifted = 0
         num_fall_down = 0
         num_success = 0
+        terminations_info = {}
         eval_until_episode = utils.Until(self.cfg.num_eval_episodes)
 
         while eval_until_episode(episode):
@@ -215,6 +216,9 @@ class Workspace:
                 num_success += 1
             if episode_rock_lifted and not final_lifted:
                 num_fall_down += 1
+            for termination_type, triggered in self.train_env._last_termination_info.items():
+                if triggered:
+                    terminations_info[termination_type] = terminations_info.get(termination_type, 0) + 1
             episode += 1
             self.video_recorder.save(f"{self.global_frame}.mp4")
 
@@ -226,6 +230,8 @@ class Workspace:
             log("rock_lifted_ratio", num_rock_lifted / episode) # rock lifted atleast once in the episode
             log("success_ratio", num_success / episode) # task solved
             log("fall_down_ratio", num_fall_down / episode) # rocked lifted but dropped later
+            for termination_type, count in terminations_info.items():
+                log(f"term/{termination_type}", count/episode)
 
     def train(self):
         # predicates
