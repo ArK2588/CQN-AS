@@ -27,6 +27,7 @@ for pkl in pkls:
         img_hwc = np.transpose(demo[i]['rgb_cabine'], (1, 2, 0))
         demo[i]['rgb_cabine'] = np.transpose(cv2.resize(img_hwc, (84, 84), interpolation=cv2.INTER_AREA), (2, 0, 1))
         demo[i]['depth_cabine'] = []
+        demo[i]['action'] = -50 * demo[i]['action']
     # write demo to file at dst_dataset
     with open(FLAGS.dst_dataset+"/"+pkl.name, "wb") as f:
         pickle.dump(demo, f)
