@@ -47,8 +47,9 @@ dataset_root: /datasets/demonstrations_downscaled_reseted_env_84x84 #${hydra:run
 stone_height_threshold: 1.5
 camera_shape: [84, 84]
 task_name: AgxCave-Rock-Capturing-Vision-v0
-reward_type: sparse # try dense
+reward_type: env # try dense
 state_based_only: false #true
+reward_config: 1
 
 agent:
   _target_: agx_src.cqn_as.CQNASAgent
@@ -70,8 +71,8 @@ agent:
   gru_layers: 1
   rgb_encoder_layers: 0 #0
   use_parallel_impl: true #false  # useful in powerful GPUs
-  v_min: -2.0 # maybe -1.0/1.0?
-  v_max: 2.0
+  v_min: -20 #-2.0 # maybe -1.0/1.0?
+  v_max: 200.0
   critic_lambda: 0.1
   stddev_schedule: 0.01
   bc_lambda: 1.0

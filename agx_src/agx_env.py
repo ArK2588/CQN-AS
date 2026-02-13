@@ -13,6 +13,22 @@ import agxcave
 from agxcave.agxenvs.utils.parse_cfg import parse_env_cfg
 
 from agx_src.demo_reader import resize_chw_image, standardize_to_agxenv
+import agxcave.agxtasks.excavator.rock_capturing.config.rock_capturing_cfg as agxrewards
+import agx_src.rewards as rewards_setups
+
+def use_reward_setup(reward_config: int, obs_dict: dict, is_last: bool):
+    if reward_config == 1:
+        return rewards_setups.calc_reward1(obs_dict, is_last)
+    elif reward_config == 2:
+        return rewards_setups.calc_reward2(obs_dict, is_last)
+    elif reward_config == 3:
+        return rewards_setups.calc_reward3(obs_dict, is_last)
+    elif reward_config == 4:
+        return rewards_setups.calc_reward4(obs_dict, is_last)
+    elif reward_config == 5:
+        return rewards_setups.calc_reward5(obs_dict, is_last)
+    else:
+        raise ValueError(f"Unknown reward setup: {reward_config}")
 
 
 def _to_numpy(x):
@@ -133,6 +149,7 @@ class AGXEnv:
         headless: bool = True,
         reward_type: str = "sparse",
         state_based_only: bool = False,
+        reward_config: int = 1,
     ):
         self._task_name = task_name
         self._episode_length = int(episode_length)
@@ -148,6 +165,9 @@ class AGXEnv:
         self._prev_obs_dict = None
         self._lift_weight = 0.5
         self._bucket_approach_weight = 0.3
+        self._reward_config = reward_config
+        self._last_stone_pos = np.zeros(3, dtype=np.float32)
+        self._last_step_rewards = {}
 
 
         cfg = parse_env_cfg(
@@ -157,6 +177,19 @@ class AGXEnv:
             render_mode=None,
         )
 
+        # reward setup to match rlpd
+        reward_map = {
+            0: agxrewards.RockRewards0Cfg,
+            1: agxrewards.RockRewards1Cfg,
+            2: agxrewards.RockRewards2Cfg,
+            3: agxrewards.RockRewards3Cfg,
+            4: agxrewards.RockRewards4Cfg,
+            5: agxrewards.RockRewards5Cfg,
+        }
+
+        if reward_config in reward_map:
+            cfg.rewards = reward_map[reward_config]()
+    
         self._env = gym.make(task_name, cfg=cfg, agx_args=[])
 
         self.action_space = self._env.action_space
@@ -317,6 +350,8 @@ class AGXEnv:
         self._step_counter = 0
         self._last_termination_info = {}
         self._prev_obs_dict = obs_dict
+        self._last_stone_pos = np.zeros(3, dtype=np.float32)
+        self._last_step_rewards = {}
 
         return TimeStep(
             rgb_obs=obs["rgb_obs"],
@@ -328,7 +363,7 @@ class AGXEnv:
         )
 
     def step(self, action: np.ndarray):
-        obs, _, terminated, truncated, info = self._env.step(action)
+        obs, env_reward, terminated, truncated, info = self._env.step(action)
         obs_dict = obs
         obs = self._extract_obs(obs_dict)
         self._step_counter += 1
@@ -339,7 +374,10 @@ class AGXEnv:
         done = bool(terminated or truncated)
         step_type = StepType.LAST if done else StepType.MID
 
-        reward = self._compute_reward(obs_dict, self._prev_obs_dict)
+        if self._reward_type == "env":
+            reward = float(env_reward)
+        else:
+            reward = self._compute_reward(obs_dict, self._prev_obs_dict)
         self._prev_obs_dict = obs_dict
 
         # discount=0 only on success
@@ -355,6 +393,14 @@ class AGXEnv:
             discount = 0.0
         else:
             discount = 1.0
+        
+        # stone pos and step rewards for eval access
+        self._last_stone_pos = _to_numpy(obs_dict["stone"]).reshape(-1)
+        self._last_step_rewards = {
+            k.replace("Step_Reward/", ""): float(v)
+            for k, v in extras.items()
+            if k.startswith("Step_Reward/")
+        }
 
         return TimeStep(
             rgb_obs=obs["rgb_obs"],
@@ -401,12 +447,15 @@ class AGXEnv:
                 prev_obs_dict = traj[i - 1]
                 if i == T - 1:
                     step_type = StepType.LAST
-                    reward = self._compute_reward(obs_dict, prev_obs_dict)
                     discount = 0.0
                 else:
                     step_type = StepType.MID
-                    reward = self._compute_reward(obs_dict, prev_obs_dict)
                     discount = 1.0
+
+                if self._reward_type == "env":
+                    reward = use_reward_setup(self._reward_config,obs_dict, is_last=(i == T - 1))
+                else:
+                    reward = self._compute_reward(obs_dict, prev_obs_dict)
 
             timesteps.append(
                 ExtendedTimeStep(
@@ -432,6 +481,7 @@ def make(
     camera_keys=("rgb", "depth"),
     reward_type="sparse",
     state_based_only=False,
+    reward_config=1
 ):
     env = AGXEnv(
         task_name=task_name,
@@ -443,7 +493,8 @@ def make(
         stone_height_threshold=stone_height_threshold,
         headless=True,
         reward_type=reward_type,
-        state_based_only=state_based_only
+        state_based_only=state_based_only,
+        reward_config=reward_config
     )
     return ExtendedTimeStepWrapper(env)
 

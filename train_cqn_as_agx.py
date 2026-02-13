@@ -74,6 +74,7 @@ class Workspace:
             camera_keys=self.cfg.camera_keys,
             state_based_only=self.cfg.state_based_only,
             reward_type=self.cfg.reward_type,
+            reward_config=self.cfg.reward_config,
         )
         rgb_spec = self.train_env.rgb_raw_observation_spec()
         if self.cfg.temporal_ensemble:
@@ -178,11 +179,22 @@ class Workspace:
             "stone_height_termination": 0,
             "cabin_pitch_termination": 0,
         }
+        end_positions = []
+        rewards_info = {
+            "rock_stable": [],
+            "rock_z_pos": [],
+            "rock_1_5": [],
+            "rock_bucket_dis": [],
+            "rock_z_pos_clipped": [],
+            "energy_reg": []
+        }
         eval_until_episode = utils.Until(self.cfg.num_eval_episodes)
 
         while eval_until_episode(episode):
             episode_step = 0
             episode_rock_lifted = False
+            episode_success = False
+            episode_fall_down = False
             time_step = self.train_env.reset()
             if self.cfg.temporal_ensemble:
                 self.eval_temporal_ensemble.reset()
@@ -209,18 +221,32 @@ class Workspace:
                 time_step = self.train_env.step(sub_action)
                 self.video_recorder.record(self.train_env)
                 total_reward += time_step.reward
-                if time_step.reward[0] >= 1:
+
+                # stone pos checks
+                stone_z = self.train_env._last_stone_pos[2]
+                if stone_z >= 1.5:
                     episode_rock_lifted = True
+                
+                if episode_rock_lifted and stone_z <= 1.0:
+                    episode_fall_down = True
+
+                # success via rock_stable reward
+                rock_stable = self.train_env._last_step_rewards.get("rock_stable", 0)
+                if rock_stable != 0:
+                    episode_success = True
+
+                for key, value in self.train_env._last_step_rewards.items():
+                    rewards_info[key].append(value)
+
                 step += 1
                 episode_step += 1
 
-            # success check at final timestep
-            final_lifted = time_step.reward[0] >= 1
+            end_positions.append(self.train_env._last_stone_pos[2])
             if episode_rock_lifted:
                 num_rock_lifted += 1
-            if final_lifted:
+            if episode_success:
                 num_success += 1
-            if episode_rock_lifted and not final_lifted:
+            if episode_fall_down:
                 num_fall_down += 1
             for termination_type, triggered in self.train_env._last_termination_info.items():
                 if triggered:
@@ -236,8 +262,12 @@ class Workspace:
             log("rock_lifted_ratio", num_rock_lifted / episode) # rock lifted atleast once in the episode
             log("success_ratio", num_success / episode) # task solved
             log("fall_down_ratio", num_fall_down / episode) # rocked lifted but dropped later
+            log("mean_end_position", float(np.mean(end_positions)))
             for termination_type, count in terminations_info.items():
                 log(f"term/{termination_type}", count/episode)
+            for key, values in rewards_info.items():
+                if len(values) > 0:
+                    log(f"reward/{key}", float(np.mean(values)))
 
     def train(self):
         # predicates
