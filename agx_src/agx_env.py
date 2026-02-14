@@ -193,7 +193,10 @@ class AGXEnv:
         self._env = gym.make(task_name, cfg=cfg, agx_args=[])
 
         self.action_space = self._env.action_space
-        self._low_dim_raw_dim = 3 #10 # 3 + 3 + 3 + 1
+        if self._state_based_only:
+            self._low_dim_raw_dim = 6 # only state + stone
+        else:
+            self._low_dim_raw_dim = 3 # position
 
         self.low_dim_raw_observation_space = gym.spaces.Box(
             low=-np.inf, high=np.inf, shape=(self._low_dim_raw_dim,), dtype=np.float32
@@ -260,8 +263,12 @@ class AGXEnv:
         # bucket_pos = _to_numpy(obs_dict["bucket"]).reshape(-1).astype(np.float32)
         # cabin_pos = _to_numpy(obs_dict["cabin_position"]).reshape(-1).astype(np.float32)
         # cabin_pitch = _to_numpy(obs_dict["cabin_pitch"]).reshape(-1).astype(np.float32)
+        stone = _to_numpy(obs_dict["stone"]).reshape(-1).astype(np.float32)
         # low = np.concatenate([state, bucket_pos, cabin_pos, cabin_pitch], axis=0)
-        low = state
+        if self._state_based_only:
+            low = np.concatenate([state, stone], axis=0)
+        else:
+            low = state
         assert low.shape[0] == self._low_dim_raw_dim, low.shape
         return low
 
