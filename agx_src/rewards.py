@@ -28,7 +28,7 @@ def calc_reward1(obs, last):
     proximity_reward = 1.0 / (dist_proximity + epsilon)
 
     # Kombiniere die Rewards
-    reward += float(proximity_reward)
+    reward += float(proximity_reward)/60
 
     return reward
 

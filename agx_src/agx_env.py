@@ -193,7 +193,7 @@ class AGXEnv:
         self._env = gym.make(task_name, cfg=cfg, agx_args=[])
 
         self.action_space = self._env.action_space
-        self._low_dim_raw_dim = 10 # 3 + 3 + 3 + 1
+        self._low_dim_raw_dim = 3 #10 # 3 + 3 + 3 + 1
 
         self.low_dim_raw_observation_space = gym.spaces.Box(
             low=-np.inf, high=np.inf, shape=(self._low_dim_raw_dim,), dtype=np.float32
@@ -257,11 +257,11 @@ class AGXEnv:
 
     def _build_low_dim_raw(self, obs_dict):
         state = _to_numpy(obs_dict["policy"]).reshape(-1).astype(np.float32)[:3] # only relevant ones
-        bucket_pos = _to_numpy(obs_dict["bucket"]).reshape(-1).astype(np.float32)
-        cabin_pos = _to_numpy(obs_dict["cabin_position"]).reshape(-1).astype(np.float32)
-        cabin_pitch = _to_numpy(obs_dict["cabin_pitch"]).reshape(-1).astype(np.float32)
-
-        low = np.concatenate([state, bucket_pos, cabin_pos, cabin_pitch], axis=0)
+        # bucket_pos = _to_numpy(obs_dict["bucket"]).reshape(-1).astype(np.float32)
+        # cabin_pos = _to_numpy(obs_dict["cabin_position"]).reshape(-1).astype(np.float32)
+        # cabin_pitch = _to_numpy(obs_dict["cabin_pitch"]).reshape(-1).astype(np.float32)
+        # low = np.concatenate([state, bucket_pos, cabin_pos, cabin_pitch], axis=0)
+        low = state
         assert low.shape[0] == self._low_dim_raw_dim, low.shape
         return low
 
@@ -363,7 +363,7 @@ class AGXEnv:
         )
 
     def step(self, action: np.ndarray):
-        obs, env_reward, terminated, truncated, info = self._env.step(action)
+        obs, env_reward, terminated, truncated, info = self._env.step(action * 2.0) # denormalizing actions to match agx_env
         obs_dict = obs
         obs = self._extract_obs(obs_dict)
         self._step_counter += 1
@@ -443,7 +443,7 @@ class AGXEnv:
                 reward = 0.0
                 discount = 1.0
             else:
-                action = _to_numpy(traj[i - 1]["action"]).reshape(-1).astype(np.float32)
+                action = _to_numpy(traj[i - 1]["action"]).reshape(-1).astype(np.float32)/2.0 # normalizing actions
                 prev_obs_dict = traj[i - 1]
                 if i == T - 1:
                     step_type = StepType.LAST
