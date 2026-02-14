@@ -370,7 +370,9 @@ class AGXEnv:
         )
 
     def step(self, action: np.ndarray):
-        obs, env_reward, terminated, truncated, info = self._env.step(action * 2.0) # denormalizing actions to match agx_env
+        full_action = np.zeros(5, dtype=np.float32)
+        full_action[:3] = action[:3] * 2.0 # denormalizing actions and removing last 2 elements
+        obs, env_reward, terminated, truncated, info = self._env.step(full_action)
         obs_dict = obs
         obs = self._extract_obs(obs_dict)
         self._step_counter += 1
@@ -387,16 +389,13 @@ class AGXEnv:
             reward = self._compute_reward(obs_dict, self._prev_obs_dict)
         self._prev_obs_dict = obs_dict
 
-        # discount=0 only on success
-        # potential fix to the issue where agent learns to trigger unsafe terminations as reward hack
         extras = info.get("extras", {})
         self._last_termination_info = {
             k.replace("Episode_Termination/", ""): int(v)
             for k, v in extras.items()
             if k.startswith("Episode_Termination/")
         }
-        success_flag = bool(extras.get("Episode_Termination/stone_height_termination", 0))
-        if terminated and success_flag:
+        if terminated:
             discount = 0.0
         else:
             discount = 1.0
@@ -450,7 +449,9 @@ class AGXEnv:
                 reward = 0.0
                 discount = 1.0
             else:
-                action = _to_numpy(traj[i - 1]["action"]).reshape(-1).astype(np.float32)/2.0 # normalizing actions
+                full_action = _to_numpy(traj[i - 1]["action"]).reshape(-1).astype(np.float32)/2.0 # normalizing actions
+                action = np.zeros(5, dtype=np.float32)
+                action[:3] = full_action[:3]
                 prev_obs_dict = traj[i - 1]
                 if i == T - 1:
                     step_type = StepType.LAST
