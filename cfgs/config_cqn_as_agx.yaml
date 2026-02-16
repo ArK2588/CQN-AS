@@ -3,26 +3,26 @@ defaults:
   - override hydra/launcher: submitit_local
 
 # task settings
-frame_stack: 8
+frame_stack: 1 #8
 action_repeat: 1
 discount: 0.99
 temporal_ensemble: true
-action_sequence: 4
+action_sequence: 5
 # train settings
 num_seed_frames: 0
 # eval
-eval_every_frames: 2500
+eval_every_frames: 10000 #2500
 num_eval_episodes: 10
 # snapshot
 save_snapshot: false
 save_policy_every_frames: 25000
 # replay buffer
 replay_buffer_size: 1000000
-replay_buffer_num_workers: 4 #4
-nstep: 1
+replay_buffer_num_workers: 4 #0
+nstep: 3
 batch_size: 256
-demo_batch_size: 256
-use_relabeling: true
+demo_batch_size: 256 
+use_relabeling: false #true
 # misc
 seed: 1
 device: cuda
@@ -59,22 +59,22 @@ agent:
   device: cuda #${device}
   lr: ${lr}
   weight_decay: ${weight_decay}
-  critic_target_tau: 0.02
-  critic_target_interval: 1
+  critic_target_tau: 1.0 #0.02
+  critic_target_interval: 100 #1
   update_every_steps: 1
-  num_expl_steps: 0
+  num_expl_steps: 0 #4000
   feature_dim: ${feature_dim}
-  hidden_dim: 512
+  hidden_dim: 1024
   levels: 3
   bins: 5
-  atoms: 51
+  atoms: 101
   gru_layers: 1
-  rgb_encoder_layers: 1 #0
+  rgb_encoder_layers: 0 #0
   use_parallel_impl: true #false  # useful in powerful GPUs
-  v_min: -20 #-2.0 # maybe -1.0/1.0?
+  v_min: -30 #-2.0 # maybe -1.0/1.0?
   v_max: 200.0
   critic_lambda: 0.1
-  stddev_schedule: 0.01
+  stddev_schedule: 'linear(0.1,0.01,500000)' #0.01
   bc_lambda: 1.0
   bc_margin: 0.01
   state_based_only: ${state_based_only}
