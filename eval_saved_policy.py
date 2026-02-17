@@ -19,7 +19,7 @@ from video import VideoRecorder
 
 def load_policy(policy_path: Path, device: torch.device):
     
-    payload = torch.load(policy_path, map_location=device)
+    payload = torch.load(policy_path, map_location=device, weights_only=False)
 
     if "agent" not in payload:
         raise KeyError(f"No 'agent' key in policy checkpoint: {policy_path}")

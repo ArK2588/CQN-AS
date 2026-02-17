@@ -450,9 +450,7 @@ class AGXEnv:
                 reward = 0.0
                 discount = 1.0
             else:
-                full_action = _to_numpy(traj[i - 1]["action"]).reshape(-1).astype(np.float32)/2.0 # normalizing actions
-                action = np.zeros(5, dtype=np.float32)
-                action[:3] = full_action[:3]
+                action = _to_numpy(traj[i - 1]["action"]).reshape(-1).astype(np.float32)[:3]/2.0 # normalizing actions
                 prev_obs_dict = traj[i - 1]
                 if i == T - 1:
                     step_type = StepType.LAST
