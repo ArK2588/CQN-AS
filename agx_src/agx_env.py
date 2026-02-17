@@ -150,6 +150,7 @@ class AGXEnv:
         reward_type: str = "sparse",
         state_based_only: bool = False,
         reward_config: int = 1,
+        render_mode = None,
     ):
         self._task_name = task_name
         self._episode_length = int(episode_length)
@@ -174,7 +175,7 @@ class AGXEnv:
             task_name,
             device="cuda",
             headless=headless,
-            render_mode=None,
+            render_mode=render_mode,
         )
 
         # reward setup to match rlpd
@@ -489,7 +490,9 @@ def make(
     camera_keys=("rgb", "depth"),
     reward_type="sparse",
     state_based_only=False,
-    reward_config=1
+    reward_config=1,
+    headless=True,
+    render_mode=None,
 ):
     env = AGXEnv(
         task_name=task_name,
@@ -499,10 +502,11 @@ def make(
         camera_shape=tuple(camera_shape),
         camera_keys=camera_keys,
         stone_height_threshold=stone_height_threshold,
-        headless=True,
+        headless=headless,
         reward_type=reward_type,
         state_based_only=state_based_only,
-        reward_config=reward_config
+        reward_config=reward_config,
+        render_mode=render_mode,
     )
     return ExtendedTimeStepWrapper(env)
 
