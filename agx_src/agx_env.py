@@ -193,7 +193,7 @@ class AGXEnv:
     
         self._env = gym.make(task_name, cfg=cfg, agx_args=[])
 
-        self.action_space = self._env.action_space
+        self.action_space = gym.spaces.Box(low=-1.0, high=1.0, shape=(3,), dtype=np.float32) #self._env.action_space
         if self._state_based_only:
             self._low_dim_raw_dim = 6 # only state + stone
         else:
