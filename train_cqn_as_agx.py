@@ -269,6 +269,9 @@ class Workspace:
                 if len(values) > 0:
                     log(f"reward/{key}", float(np.mean(values)))
 
+        # saving policy
+        self.save_policy()
+
     def train(self):
         # predicates
         train_until_step = utils.Until(
@@ -277,10 +280,6 @@ class Workspace:
         seed_until_step = utils.Until(self.cfg.num_seed_frames, self.cfg.action_repeat)
         eval_every_step = utils.Every(
             self.cfg.eval_every_frames, self.cfg.action_repeat
-        )
-
-        save_policy_every_step = utils.Every(
-            self.cfg.save_policy_every_frames, self.cfg.action_repeat
         )
 
         do_eval = False
@@ -341,9 +340,6 @@ class Workspace:
                 # try to save snapshot
                 if self.cfg.save_snapshot:
                     self.save_snapshot()
-                # save policy periodically
-                if save_policy_every_step(self.global_step):
-                    self.save_policy(self.global_step)
                 episode_step = 0
                 episode_reward = 0
 
@@ -415,10 +411,10 @@ class Workspace:
         with snapshot.open("wb") as f:
             torch.save(payload, f)
     
-    def save_policy(self, step):
+    def save_policy(self):
         policy_dir = self.work_dir / "policies"
         policy_dir.mkdir(exist_ok=True)
-        policy_path = policy_dir / f"policy_{step}.pt"
+        policy_path = policy_dir / f"policy_{self._global_step}.pt"
         payload = {
             "agent": self.agent,
             "_global_step": self._global_step,
@@ -426,7 +422,7 @@ class Workspace:
         }
         with policy_path.open("wb") as f:
             torch.save(payload, f)
-        print(f"Saved policy at step {step} to {policy_path}")
+        print(f"Saved policy at step {self._global_step} to {policy_path}")
 
     def load_snapshot(self):
         snapshot = self.work_dir / "snapshot.pt"
