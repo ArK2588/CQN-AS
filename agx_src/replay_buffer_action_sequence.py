@@ -69,11 +69,9 @@ class ReplayBufferStorage:
                 episode[spec.name] = np.array(value, spec.dtype)
             self._current_episode = defaultdict(list)
             if self._use_relabeling:
-                # for now returns true
                 episode = self._relabel_episode(episode)
             if self._is_demo_buffer:
                 # If this is demo replay buffer, save only when it's successful
-                # todo implement later for now returns true
                 if self._check_if_successful(episode):
                     self._store_episode(episode)
             else:
@@ -87,8 +85,7 @@ class ReplayBufferStorage:
         return episode
 
     def _check_if_successful(self, episode):
-        # todo
-        return True
+        return np.isclose(episode["success"][-1], 1.0)
 
     def _preload(self):
         self._num_episodes = 0

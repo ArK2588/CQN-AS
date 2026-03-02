@@ -100,15 +100,6 @@ class MultiViewCNNEncoder(nn.Module):
         h = torch.cat(hs, -1)
         return h
 
-class DummyEncoder(nn.Module):
-    """dummy encoder for state-based-only mode"""
-    def __init__(self, repr_dim=1):
-        super().__init__()
-        self.repr_dim = repr_dim
-
-    def forward(self, obs: torch.Tensor):
-        return torch.zeros(obs.shape[0], self.repr_dim, device=obs.device, dtype=obs.dtype)
-
 class C2FCriticNetwork(nn.Module):
     def __init__(
         self,
@@ -122,40 +113,71 @@ class C2FCriticNetwork(nn.Module):
         levels: int,
         bins: int,
         atoms: int,
+        state_based_only: bool = False,
     ):
         super().__init__()
         self._levels = levels
         self._action_sequence, self._actor_dim = action_shape
         self._bins = bins
-
-        # Advantage stream in Dueling network
-        ## RGB encoder for advantage stream
-        adv_rgb_encoder_net = []
-        input_dim = repr_dim
-        for i in range(rgb_encoder_layers):
-            adv_rgb_encoder_net += [
-                nn.Linear(input_dim, hidden_dim, bias=False),
-                nn.LayerNorm(hidden_dim),
-                nn.SiLU(),
+        self.state_based_only = state_based_only
+ 
+        if not self.state_based_only:
+            # Advantage stream in Dueling network
+            # RGB encoder for advantage stream
+            adv_rgb_encoder_net = []
+            input_dim = repr_dim
+            for i in range(rgb_encoder_layers):
+                adv_rgb_encoder_net += [
+                    nn.Linear(input_dim, hidden_dim, bias=False),
+                    nn.LayerNorm(hidden_dim),
+                    nn.SiLU(),
+                ]
+                input_dim = hidden_dim
+            adv_rgb_encoder_net = adv_rgb_encoder_net + [
+                nn.Linear(input_dim, feature_dim, bias=False),
+                nn.LayerNorm(feature_dim),
+                nn.Tanh(),
             ]
-            input_dim = hidden_dim
-        adv_rgb_encoder_net = adv_rgb_encoder_net + [
-            nn.Linear(input_dim, feature_dim, bias=False),
-            nn.LayerNorm(feature_dim),
-            nn.Tanh(),
-        ]
-        self.adv_rgb_encoder = nn.Sequential(*adv_rgb_encoder_net)
-
-        ## Low-dimensional encoder for advantage stream
-        self.adv_low_dim_encoder = nn.Sequential(
-            nn.Linear(low_dim, feature_dim, bias=False),
-            nn.LayerNorm(feature_dim),
-            nn.Tanh(),
-        )
-        ## Main network for advantage stream
+            self.adv_rgb_encoder = nn.Sequential(*adv_rgb_encoder_net)
+ 
+            self.adv_low_dim_encoder = nn.Sequential(
+                nn.Linear(low_dim, feature_dim, bias=False),
+                nn.LayerNorm(feature_dim),
+                nn.Tanh(),
+            )
+ 
+            # Value stream in Dueling network
+            # RGB encoder for value stream
+            value_rgb_encoder_net = []
+            input_dim = repr_dim
+            for i in range(rgb_encoder_layers):
+                value_rgb_encoder_net += [
+                    nn.Linear(input_dim, hidden_dim, bias=False),
+                    nn.LayerNorm(hidden_dim),
+                    nn.SiLU(),
+                ]
+                input_dim = hidden_dim
+            value_rgb_encoder_net = value_rgb_encoder_net + [
+                nn.Linear(input_dim, feature_dim, bias=False),
+                nn.LayerNorm(feature_dim),
+                nn.Tanh(),
+            ]
+            self.value_rgb_encoder = nn.Sequential(*value_rgb_encoder_net)
+ 
+            self.value_low_dim_encoder = nn.Sequential(
+                nn.Linear(low_dim, feature_dim, bias=False),
+                nn.LayerNorm(feature_dim),
+                nn.Tanh(),
+            )
+ 
+            input_features_dim = feature_dim * 2
+        else:
+            input_features_dim = low_dim
+ 
+        # Main networks
         self.adv_net = nn.Sequential(
             nn.Linear(
-                feature_dim * 2 + self._action_sequence + self._actor_dim + levels,
+                input_features_dim + self._action_sequence + self._actor_dim + levels,
                 hidden_dim,
                 bias=False,
             ),
@@ -176,35 +198,10 @@ class C2FCriticNetwork(nn.Module):
             self._actor_dim * bins * atoms,
         )
         self.adv_output_shape = (self._action_sequence * self._actor_dim, bins, atoms)
-
-        # Value stream in Dueling network
-        ## RGB encoder for advantage stream
-        value_rgb_encoder_net = []
-        input_dim = repr_dim
-        for i in range(rgb_encoder_layers):
-            value_rgb_encoder_net += [
-                nn.Linear(input_dim, hidden_dim, bias=False),
-                nn.LayerNorm(hidden_dim),
-                nn.SiLU(),
-            ]
-            input_dim = hidden_dim
-        value_rgb_encoder_net = value_rgb_encoder_net + [
-            nn.Linear(input_dim, feature_dim, bias=False),
-            nn.LayerNorm(feature_dim),
-            nn.Tanh(),
-        ]
-        self.value_rgb_encoder = nn.Sequential(*value_rgb_encoder_net)
-
-        ## Low-dimensional encoder for advantage stream
-        self.value_low_dim_encoder = nn.Sequential(
-            nn.Linear(low_dim, feature_dim, bias=False),
-            nn.LayerNorm(feature_dim),
-            nn.Tanh(),
-        )
-        ## Main network for advantage stream
+ 
         self.value_net = nn.Sequential(
             nn.Linear(
-                feature_dim * 2 + self._action_sequence + self._actor_dim + levels,
+                input_features_dim + self._action_sequence + self._actor_dim + levels,
                 hidden_dim,
                 bias=False,
             ),
@@ -233,6 +230,13 @@ class C2FCriticNetwork(nn.Module):
         self.value_head.bias.data.fill_(0.0)
 
     def encode(self, rgb_obs: torch.Tensor, low_dim_obs: torch.Tensor):
+        if self.state_based_only:
+            # bypass encoders completely and return low_dim directly
+            return low_dim_obs, low_dim_obs
+ 
+        if rgb_obs is None:
+            raise ValueError("Something broken, rgb_obs=None but state_based_only=False")
+
         value_h = torch.cat(
             [self.value_rgb_encoder(rgb_obs), self.value_low_dim_encoder(low_dim_obs)],
             -1,
@@ -322,7 +326,7 @@ class C2FCriticNetwork(nn.Module):
         Outputs:
         - q_logits: [B, L, action_sequence * action_dimensions, bins, atoms]
         """
-        device, dtype = rgb_obs.device, rgb_obs.dtype
+        device, dtype = low_dim_obs.device, low_dim_obs.dtype
         levels = prev_actions.size(1)
         B, L, T = prev_actions.size(0), levels, self._action_sequence
 
@@ -380,6 +384,7 @@ class C2FCritic(nn.Module):
         gru_layers: int,
         rgb_encoder_layers: int,
         use_parallel_impl: bool,
+        state_based_only: bool = False,
     ):
         super().__init__()
 
@@ -389,6 +394,7 @@ class C2FCritic(nn.Module):
         self.v_min = v_min
         self.v_max = v_max
         self.use_parallel_impl = use_parallel_impl
+        self.state_based_only = state_based_only       
         actor_dim = action_shape[0] * action_shape[1]  # action_sequence * action_dim
         self.initial_low = nn.Parameter(
             torch.FloatTensor([-1.0] * actor_dim), requires_grad=False
@@ -412,12 +418,13 @@ class C2FCritic(nn.Module):
             levels,
             bins,
             atoms,
+            state_based_only=state_based_only,
         )
 
     def get_action(self, rgb_obs: torch.Tensor, low_dim_obs: torch.Tensor):
-        low = self.initial_low.repeat(rgb_obs.shape[0], 1).detach()
-        high = self.initial_high.repeat(rgb_obs.shape[0], 1).detach()
-
+        batch_size = low_dim_obs.shape[0]
+        low = self.initial_low.repeat(batch_size, 1).detach()
+        high = self.initial_high.repeat(batch_size, 1).detach()
         features = self.network.encode(rgb_obs, low_dim_obs)
         for level in range(self.levels):
             q_logits = self.network.forward_each_level(
@@ -467,8 +474,9 @@ class C2FCritic(nn.Module):
         log_q_probs_per_level = []
         log_q_probs_a_per_level = []
 
-        low = self.initial_low.repeat(rgb_obs.shape[0], 1).detach()
-        high = self.initial_high.repeat(rgb_obs.shape[0], 1).detach()
+        batch_size = low_dim_obs.shape[0]
+        low = self.initial_low.repeat(batch_size, 1).detach()
+        high = self.initial_high.repeat(batch_size, 1).detach()
 
         if self.use_parallel_impl:
             # Pre-compute previous actions for all the levels
@@ -655,16 +663,19 @@ class CQNASAgent:
         self.bc_lambda = bc_lambda
         self.bc_margin = bc_margin
         self.critic_lambda = critic_lambda
+        self.state_based_only = state_based_only
 
         # models
-        self.state_based_only = state_based_only
-        if state_based_only:
-            self.encoder = DummyEncoder(repr_dim=1).to(device)
+        if self.state_based_only:
+            self.encoder = None
+            repr_dim = 0
         else:
             self.encoder = MultiViewCNNEncoder(rgb_obs_shape).to(device)
+            repr_dim = self.encoder.repr_dim
+
         self.critic = C2FCritic(
             action_shape,
-            self.encoder.repr_dim,
+            repr_dim,
             low_dim_obs_shape[-1],
             feature_dim,
             hidden_dim,
@@ -676,10 +687,11 @@ class CQNASAgent:
             gru_layers,
             rgb_encoder_layers,
             use_parallel_impl,
+            state_based_only=self.state_based_only,
         ).to(device)
         self.critic_target = C2FCritic(
             action_shape,
-            self.encoder.repr_dim,
+            repr_dim,
             low_dim_obs_shape[-1],
             feature_dim,
             hidden_dim,
@@ -691,17 +703,22 @@ class CQNASAgent:
             gru_layers,
             rgb_encoder_layers,
             use_parallel_impl,
+            state_based_only=self.state_based_only,
         ).to(device)
         self.critic_target.load_state_dict(self.critic.state_dict())
 
         # optimizers
-        encoder_params = list(self.encoder.parameters())
-        if encoder_params:
-            self.encoder_opt = torch.optim.AdamW(
-                encoder_params, lr=lr, weight_decay=weight_decay
-            )
+        if self.encoder is not None:
+            encoder_params = list(self.encoder.parameters())
+            if encoder_params:
+                self.encoder_opt = torch.optim.AdamW(
+                    encoder_params, lr=lr, weight_decay=weight_decay
+                )
+            else:
+                self.encoder_opt = None
         else:
             self.encoder_opt = None
+        
         self.critic_opt = torch.optim.AdamW(
             self.critic.parameters(), lr=lr, weight_decay=weight_decay
         )
@@ -717,16 +734,18 @@ class CQNASAgent:
 
     def train(self, training=True):
         self.training = training
-        self.encoder.train(training)
+        if self.encoder is not None:
+            self.encoder.train(training)
         self.critic.train(training)
 
     def act(self, rgb_obs, low_dim_obs, step, eval_mode):
-        rgb_obs = torch.as_tensor(rgb_obs, device=self.device).unsqueeze(0)
         low_dim_obs = torch.as_tensor(low_dim_obs, device=self.device).unsqueeze(0)
         if self.state_based_only:
-            rgb_obs = torch.zeros(1, self.encoder.repr_dim, device=self.device)
+            rgb_obs = None
         else:
+            rgb_obs = torch.as_tensor(rgb_obs, device=self.device).unsqueeze(0)
             rgb_obs = self.encoder(rgb_obs)
+
         stddev = utils.schedule(self.stddev_schedule, step)
         action = self.critic_target.get_action(
             rgb_obs, low_dim_obs
@@ -826,22 +845,20 @@ class CQNASAgent:
         )
 
     def update(self, batch):
-        rgb_obs = batch["rgb_obs"]
         low_dim_obs = batch["low_dim_obs"]
         action = batch["action"]
         reward = batch["reward"]
         discount = batch["discount"]
-        next_rgb_obs = batch["next_rgb_obs"]
         next_low_dim_obs = batch["next_low_dim_obs"]
         demos = batch["demos"]
-
+    
         # for state based skip augmentation and cnn
         if self.state_based_only:
-            B = rgb_obs.shape[0]
-            rgb_obs = torch.zeros(B, self.encoder.repr_dim, device=rgb_obs.device)
-            next_rgb_obs = rgb_obs.clone().detach()
-        
+            rgb_obs = None
+            next_rgb_obs = None
         else:
+            rgb_obs = batch["rgb_obs"]
+            next_rgb_obs = batch["next_rgb_obs"]
             # augment
             rgb_obs = torch.stack(
                 [self.aug(rgb_obs[:, v]) for v in range(rgb_obs.shape[1])], 1

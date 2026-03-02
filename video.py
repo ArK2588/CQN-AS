@@ -54,8 +54,18 @@ class TrainVideoRecorder:
 
     def record(self, obs):
         if self.enabled:
+            if hasattr(obs, "render"):
+                frame = obs.render()
+            else:
+                frame = obs
+    
+            if frame is None:
+                return
+    
+            if hasattr(frame, "ndim") and frame.ndim == 3 and frame.shape[0] == 3 and frame.shape[-1] != 3:
+                frame = frame.transpose(1, 2, 0)
             frame = cv2.resize(
-                obs[-3:].transpose(1, 2, 0),
+                frame,
                 dsize=(self.render_size, self.render_size),
                 interpolation=cv2.INTER_CUBIC,
             )

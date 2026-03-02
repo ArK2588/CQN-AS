@@ -46,6 +46,7 @@ class TimeStep(NamedTuple):
     rgb_obs: Any
     low_dim_obs: Any
     demo: Any
+    success: Any
 
     def first(self):
         return self.step_type == StepType.FIRST
@@ -71,6 +72,7 @@ class ExtendedTimeStep(NamedTuple):
     low_dim_obs: Any
     action: Any
     demo: Any
+    success: Any
 
     def first(self):
         return self.step_type == StepType.FIRST
@@ -112,6 +114,7 @@ class ExtendedTimeStepWrapper:
             reward=time_step.reward,
             discount=time_step.discount,
             demo=time_step.demo,
+            success=time_step.success,
         )
 
     def low_dim_observation_spec(self):
@@ -212,13 +215,13 @@ class AGXEnv:
         self.rgb_raw_observation_space = gym.spaces.Box(
             low=0,
             high=255,
-            shape=(1, 3, *self._camera_shape),   # raw = 1 view, 3 channels
+            shape=(1, 1, 1, 1) if self._state_based_only else (1, 3, *self._camera_shape),
             dtype=np.uint8,
         )
         self.rgb_observation_space = gym.spaces.Box(
             low=0,
             high=255,
-            shape=(1, 3 * self._frame_stack, *self._camera_shape),  # stacked in channels
+            shape=(1, 1, 1, 1) if self._state_based_only else (1, 3 * self._frame_stack, *self._camera_shape),
             dtype=np.uint8,
         )
 
@@ -253,8 +256,6 @@ class AGXEnv:
         return specs.Array(self.action_space.shape, np.float32, "action")
 
     def render(self):
-        if self._state_based_only:
-            return None
         if self._last_render is None:
             return np.zeros((*self._camera_shape, 3), dtype=np.uint8)
         return self._last_render
@@ -280,7 +281,7 @@ class AGXEnv:
         img = img.astype(np.uint8, copy=False)
         if img.shape[-2:] != self._camera_shape:
             img = resize_chw_image(img, self._camera_shape)
-        self._last_render = img
+        self._last_render = img.transpose(1, 2, 0)
         return img[None, ...] # (1,3,H,W)
 
     def _extract_obs(self, obs_dict):
@@ -295,6 +296,7 @@ class AGXEnv:
         low_stacked = np.concatenate(list(self._low_dim_obses), axis=0)  # (D*frame_stack,)
 
         if self._state_based_only:
+            self._build_rgb_raw(obs_dict)
             rgb_stacked = np.zeros(self.rgb_observation_space.shape, dtype=np.uint8)
             return {"low_dim_obs": low_stacked, "rgb_obs": rgb_stacked}
 
@@ -368,6 +370,7 @@ class AGXEnv:
             reward=np.array([0.0], dtype=np.float32),
             discount=np.array([1.0], dtype=np.float32),
             demo=np.array([0.0], dtype=np.float32),
+            success=np.array([0.0], dtype=np.float32),
         )
 
     def step(self, action: np.ndarray):
@@ -408,6 +411,7 @@ class AGXEnv:
             for k, v in extras.items()
             if k.startswith("Step_Reward/")
         }
+        success = float(self._last_termination_info.get("stone_height_termination", 0))
 
         return TimeStep(
             rgb_obs=obs["rgb_obs"],
@@ -416,6 +420,7 @@ class AGXEnv:
             reward=np.array([reward], dtype=np.float32),
             discount=np.array([discount], dtype=np.float32),
             demo=np.array([0.0], dtype=np.float32),
+            success=np.array([success], dtype=np.float32),
         )
 
     def get_demos(self, num_demos: int):
@@ -464,6 +469,9 @@ class AGXEnv:
                 else:
                     reward = self._compute_reward(obs_dict, prev_obs_dict)
 
+            stone_height = _to_numpy(obs_dict["stone"]).reshape(-1)[2]
+            success = 1.0 if stone_height >= self._stone_height_threshold else 0.0
+
             timesteps.append(
                 ExtendedTimeStep(
                     rgb_obs=obs["rgb_obs"],
@@ -473,6 +481,7 @@ class AGXEnv:
                     reward=np.array([reward], dtype=np.float32),
                     discount=np.array([discount], dtype=np.float32),
                     demo=np.array([1.0], dtype=np.float32),
+                    success=np.array([success], dtype=np.float32),
                 )
             )
         return timesteps

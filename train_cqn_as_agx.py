@@ -96,6 +96,7 @@ class Workspace:
             specs.Array((1,), np.float32, "reward"),
             specs.Array((1,), np.float32, "discount"),
             specs.Array((1,), np.float32, "demo"),
+            specs.Array((1,), np.float32, "success"),
         )
 
         self.replay_storage = ReplayBufferStorage(
@@ -299,7 +300,7 @@ class Workspace:
 
         self.replay_storage.add(time_step)
         self.demo_replay_storage.add(time_step)
-        self.train_video_recorder.init(time_step.rgb_obs[0])
+        self.train_video_recorder.init(self.train_env if self.cfg.state_based_only else time_step.rgb_obs[0])
         metrics = None
         while train_until_step(self.global_step):
             if time_step.last():
@@ -336,7 +337,7 @@ class Workspace:
                     self.train_temporal_ensemble.reset()
                 self.replay_storage.add(time_step)
                 self.demo_replay_storage.add(time_step)
-                self.train_video_recorder.init(time_step.rgb_obs[0])
+                self.train_video_recorder.init(self.train_env if self.cfg.state_based_only else time_step.rgb_obs[0])
                 # try to save snapshot
                 if self.cfg.save_snapshot:
                     self.save_snapshot()
@@ -388,7 +389,7 @@ class Workspace:
             episode_reward += time_step.reward
             self.replay_storage.add(time_step)
             self.demo_replay_storage.add(time_step)
-            self.train_video_recorder.record(time_step.rgb_obs[0])
+            self.train_video_recorder.record(self.train_env if self.cfg.state_based_only else time_step.rgb_obs[0])
             episode_step += 1
             self._global_step += 1
 
