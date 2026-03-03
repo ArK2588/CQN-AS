@@ -29,8 +29,8 @@ def load_policy(policy_path: Path, device: torch.device):
     global_episode = int(payload.get("_global_episode", 0))
 
     agent.device = device
-    if hasattr(agent, "encoder"):
-        agent.encoder.to(device)
+    # if hasattr(agent, "encoder"):
+    #     agent.encoder.to(device)
     if hasattr(agent, "critic"):
         agent.critic.to(device)
     if hasattr(agent, "critic_target"):
@@ -120,10 +120,11 @@ def evaluate(agent, cfg, global_step, output_dir: Path, save_video: bool, headle
     eval_until_episode = utils.Until(cfg.num_eval_episodes)
 
     while eval_until_episode(episode):
+        print('episode:',episode)
         episode_step = 0
         episode_rock_lifted = False
         episode_success = False
-        episode_fall_down = False
+        # episode_fall_down = False
 
         time_step = env.reset()
         if eval_temporal_ensemble is not None:
@@ -152,18 +153,18 @@ def evaluate(agent, cfg, global_step, output_dir: Path, save_video: bool, headle
             time_step = env.step(sub_action)
             recorder.record(env)
 
-            total_reward += float(time_step.reward)
+            total_reward += float(np.asarray(time_step.reward).item())
 
             # stone position checks
             stone_z = float(env._last_stone_pos[2])
             if stone_z >= 1.5:
                 episode_rock_lifted = True
-            if episode_rock_lifted and stone_z <= 1.0:
-                episode_fall_down = True
+            # if episode_rock_lifted and stone_z <= 1.0:
+            #     episode_fall_down = True
 
             # success via rock_stable reward
             rock_stable = env._last_step_rewards.get("rock_stable", 0)
-            if rock_stable != 0:
+            if rock_stable > 0:
                 episode_success = True
 
             for key, value in env._last_step_rewards.items():
@@ -177,30 +178,34 @@ def evaluate(agent, cfg, global_step, output_dir: Path, save_video: bool, headle
             num_rock_lifted += 1
         if episode_success:
             num_success += 1
-        if episode_fall_down:
-            num_fall_down += 1
+        # if episode_fall_down:
+        #     num_fall_down += 1
 
         for termination_type, triggered in env._last_termination_info.items():
             if triggered:
-                terminations_info[termination_type] = terminations_info.get(termination_type, 0) + 1
+                terminations_info[termination_type] += 1
 
         recorder.save(f"{global_step}_ep{episode}.mp4")
         episode += 1
+        if episode_success != bool(env._last_termination_info['stone_height_termination']):
+            print('bug!')
+            print('ep_success:',episode_success)
+            print('termination:',env._last_termination_info['stone_height_termination'])
 
     # Aggregate metrics (mirrors train eval loop)
     summary = {
-        "episode_reward": total_reward / episode,
-        "episode_length": step * cfg.action_repeat / episode,
+        "episode_reward": total_reward / cfg.num_eval_episodes,
+        "episode_length": step * cfg.action_repeat / cfg.num_eval_episodes,
         "episode": episode,
-        "step": global_step,
-        "rock_lifted_ratio": num_rock_lifted / episode,
+        "step": step,
+        "rock_lifted_ratio": num_rock_lifted / cfg.num_eval_episodes,
         "success_ratio": num_success / episode,
         "fall_down_ratio": num_fall_down / episode,
         "mean_end_position": float(np.mean(end_positions)),
     }
 
     for termination_type, count in terminations_info.items():
-        summary[f"term/{termination_type}"] = count / episode
+        summary[f"term/{termination_type}"] = count / cfg.num_eval_episodes
 
     for key, values in rewards_info.items():
         if len(values) > 0:

@@ -381,11 +381,7 @@ class AGXEnv:
         obs = self._extract_obs(obs_dict)
         self._step_counter += 1
 
-        if self._step_counter >= self._episode_length:
-            truncated = True
-
-        done = bool(terminated or truncated)
-        step_type = StepType.LAST if done else StepType.MID
+        env_done = bool(terminated or truncated)
 
         if self._reward_type == "env":
             reward = float(env_reward)
@@ -393,16 +389,38 @@ class AGXEnv:
             reward = self._compute_reward(obs_dict, self._prev_obs_dict)
         self._prev_obs_dict = obs_dict
 
+        # dirty fix for key leakage issue from env
+        # Better way is to reset extras in the env correctly in the reset function
+        termination_keys = [
+            "max_steps",
+            "too_deep_termination",
+            "stone_x_distance_termination",
+            "stone_height_termination",
+            "cabin_pitch_termination",
+        ]
+        term_info = {k: 0 for k in termination_keys}
         extras = info.get("extras", {})
-        self._last_termination_info = {
-            k.replace("Episode_Termination/", ""): int(v)
-            for k, v in extras.items()
-            if k.startswith("Episode_Termination/")
-        }
+
+        if env_done:
+            for k, v in extras.items():
+                if k.startswith("Episode_Termination/"):
+                    name = k.replace("Episode_Termination/", "")
+                    term_info[name] = int(v)
+        
+        # wrapper-level timeout
+        if self._step_counter >= self._episode_length and not env_done:
+            truncated = True
+            term_info["max_steps"] = 1
+
+        self._last_termination_info = term_info
+
         if terminated:
             discount = 0.0
         else:
             discount = 1.0
+        
+        done = bool(terminated or truncated)
+        step_type = StepType.LAST if done else StepType.MID
         
         # stone pos and step rewards for eval access
         self._last_stone_pos = _to_numpy(obs_dict["stone"]).reshape(-1)
