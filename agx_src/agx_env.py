@@ -488,7 +488,7 @@ class AGXEnv:
                     reward = self._compute_reward(obs_dict, prev_obs_dict)
 
             stone_height = _to_numpy(obs_dict["stone"]).reshape(-1)[2]
-            success = 1.0 if stone_height >= self._stone_height_threshold else 0.0
+            success = traj[i]["success"]
 
             timesteps.append(
                 ExtendedTimeStep(

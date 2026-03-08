@@ -90,6 +90,6 @@ def calc_reward5(obs, last):
     reward = 0.0
 
     if last and z >= 1.5:
-        reward += 50.0
+        reward += 1
 
     return reward
