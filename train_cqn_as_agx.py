@@ -75,6 +75,7 @@ class Workspace:
             state_based_only=self.cfg.state_based_only,
             reward_type=self.cfg.reward_type,
             reward_config=self.cfg.reward_config,
+            render_mode=None if self.cfg.state_based_only else "rgb_array",
         )
         rgb_spec = self.train_env.rgb_raw_observation_spec()
         if self.cfg.temporal_ensemble:
