@@ -100,6 +100,99 @@ class MultiViewCNNEncoder(nn.Module):
         h = torch.cat(hs, -1)
         return h
 
+class MultiViewResNetEncoder(nn.Module):
+    def __init__(self, obs_shape, resnet_layer="layer3", img_size=224, pretrained=True):
+        super().__init__()
+        
+        assert len(obs_shape) == 4
+        self.num_views = obs_shape[0]
+        self.resnet_layer = resnet_layer
+        self.img_size = img_size
+        
+        # Create ResNet feature extractor for each view
+        self.resnet_encoders = nn.ModuleList()
+        for _ in range(self.num_views):
+            resnet_encoder = self._make_resnet_feature_extractor(resnet_layer, pretrained)
+            self.resnet_encoders.append(resnet_encoder)
+        
+        # Calculate feature dimensions
+        channels = {"layer2": 128, "layer3": 256, "layer4": 512}[resnet_layer]
+        feature_map_size = {"layer2": 28, "layer3": 14, "layer4": 7}[resnet_layer]
+        self.feature_dim = channels * feature_map_size * feature_map_size
+        self.repr_dim = self.num_views * self.feature_dim
+        
+        # Preprocessing for ResNet (ImageNet normalization)
+        self.register_buffer('mean', torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1))
+        self.register_buffer('std', torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1))
+
+    def _make_resnet_feature_extractor(self, stop_at_layer="layer3", pretrained=True):
+        """Create ResNet-18 feature extractor that stops at specified layer"""
+        from torchvision import models
+        
+        resnet = models.resnet18(pretrained=pretrained)
+        resnet.fc = nn.Identity()
+        resnet.avgpool = nn.Identity()
+
+        class FeatureExtractor(nn.Module):
+            def __init__(self, outer):
+                super().__init__()
+                self.stem = nn.Sequential(
+                    outer.conv1,
+                    outer.bn1,
+                    outer.relu,
+                    outer.maxpool
+                )
+                self.layer1 = outer.layer1
+                self.layer2 = outer.layer2
+                self.layer3 = outer.layer3
+                self.layer4 = outer.layer4
+                self.stop_at_layer = stop_at_layer
+
+            def forward(self, x):
+                x = self.stem(x)
+                x = self.layer1(x)
+                x = self.layer2(x)
+                if self.stop_at_layer == "layer2":
+                    return x
+                x = self.layer3(x)
+                if self.stop_at_layer == "layer3":
+                    return x
+                x = self.layer4(x)
+                return x
+
+        return FeatureExtractor(resnet)
+
+    def forward(self, obs: torch.Tensor):
+        # obs: [B, V, C, H, W]
+        batch_size, num_views = obs.shape[:2]
+        hs = []
+        
+        for v in range(self.num_views):
+            img = obs[:, v]  # [B, C, H, W]
+            
+            # Resize to img_size if needed
+            if img.shape[-2:] != (self.img_size, self.img_size):
+                img = img.float()  # Convert to float before interpolation
+                img = F.interpolate(img, size=(self.img_size, self.img_size), 
+                                  mode='bilinear', align_corners=False)
+            
+            # Normalize for ImageNet pretrained ResNet
+            img = (img / 255.0)  # Convert to [0,1]
+            img = (img - self.mean) / self.std  # ImageNet normalization
+            
+            # Extract ResNet features
+            with torch.no_grad():  # Keep ResNet frozen initially
+                feat_map = self.resnet_encoders[v](img)  # [B, C, H, W]
+            
+            # Flatten features
+            h = feat_map.reshape(batch_size, -1)  # [B, feature_dim]
+            hs.append(h)
+        
+        # Concatenate all view features
+        h = torch.cat(hs, -1)  # [B, num_views * feature_dim]
+        return h
+
+
 class C2FCriticNetwork(nn.Module):
     def __init__(
         self,
@@ -653,6 +746,9 @@ class CQNASAgent:
         update_every_steps,
         stddev_schedule,
         state_based_only=False,
+        resnet_layer="layer3",
+        resnet_img_size=224,
+        use_pretrained_resnet=True,
     ):
         self.device = device
         self.critic_target_tau = critic_target_tau
@@ -670,7 +766,15 @@ class CQNASAgent:
             self.encoder = None
             repr_dim = 0
         else:
-            self.encoder = MultiViewCNNEncoder(rgb_obs_shape).to(device)
+            if use_pretrained_resnet:
+                self.encoder = MultiViewResNetEncoder(
+                    rgb_obs_shape, 
+                    resnet_layer=resnet_layer,
+                    img_size=resnet_img_size,
+                    pretrained=use_pretrained_resnet
+                ).to(device)
+            else:
+                self.encoder = MultiViewCNNEncoder(rgb_obs_shape).to(device)
             repr_dim = self.encoder.repr_dim
 
         self.critic = C2FCritic(

@@ -11,8 +11,8 @@ action_sequence: 5
 # train settings
 num_seed_frames: 0
 # eval
-eval_every_frames: 10000 #2500
-num_eval_episodes: 10
+eval_every_frames: 25000 #2500
+num_eval_episodes: 25
 # snapshot
 save_snapshot: false
 save_policy_every_frames: 25000
@@ -22,7 +22,7 @@ replay_buffer_num_workers: 4 #0
 nstep: 3
 batch_size: 256
 demo_batch_size: 256 
-use_relabeling: false #true
+use_relabeling: true #true
 # misc
 seed: 1
 device: cuda
@@ -43,13 +43,18 @@ episode_length: 600
 num_train_frames: 1000000
 demos_ratio: 100 # in percentage how many demos to use
 camera_keys: ["rgb"]
-dataset_root: /datasets/demonstrations_downscaled_reseted_env_84x84 #${hydra:runtime.cwd}/../demonstrations_downscaled
+dataset_root: ${hydra:runtime.cwd}/../demonstration_reseted_env_84x84
 stone_height_threshold: 1.5
 camera_shape: [84, 84]
 task_name: AgxCave-Rock-Capturing-Vision-v0
 reward_type: env # try dense
-state_based_only: false #true
-reward_config: 1
+state_based_only: true #true
+reward_config: 5
+
+# ResNet encoder settings
+resnet_layer: layer3  # Options: layer2 (28x28), layer3 (14x14), layer4 (7x7)
+resnet_img_size: 224  # Input size for ResNet
+use_pretrained_resnet: true  # Use ImageNet pretrained weights
 
 agent:
   _target_: agx_src.cqn_as.CQNASAgent
@@ -71,18 +76,20 @@ agent:
   gru_layers: 1
   rgb_encoder_layers: 0 #0
   use_parallel_impl: true #false  # useful in powerful GPUs
-  v_min: -30 #-2.0 # maybe -1.0/1.0?
-  v_max: 200.0
+  v_min: -1.0 #-1.0 #-30 #-2.0 # maybe -1.0/1.0?
+  v_max: 2.0 #2.0 #200.0
   critic_lambda: 0.1
   stddev_schedule: 'linear(0.1,0.01,500000)' #0.01
   bc_lambda: 1.0
   bc_margin: 0.01
   state_based_only: ${state_based_only}
+  resnet_img_size: ${resnet_img_size}
+  use_pretrained_resnet: ${use_pretrained_resnet}
 
 wandb:
   project: cqn
   entity: offline2online_praktikum2526
-  name: Vision-sparse-rewards
+  name: test-run
 
 hydra:
   run:
