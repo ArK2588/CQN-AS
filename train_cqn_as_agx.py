@@ -395,8 +395,8 @@ class Workspace:
             self._global_step += 1
 
     def load_agx_demos(self):
-        if self.cfg.num_demos > 0:
-            demos = self.train_env.get_demos(self.cfg.num_demos)
+        if self.cfg.demos_ratio > 0:
+            demos = self.train_env.get_demos(self.cfg.demos_ratio)
             for demo in demos:
                 for time_step in demo:
                     self.replay_storage.add(time_step)

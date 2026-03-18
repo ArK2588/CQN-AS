@@ -41,7 +41,7 @@ use_compile: true # try otherwise fallback to false
 
 episode_length: 600
 num_train_frames: 1000000
-num_demos: 120
+demos_ratio: 100 # in percentage how many demos to use
 camera_keys: ["rgb"]
 dataset_root: /datasets/demonstrations_downscaled_reseted_env_84x84 #${hydra:runtime.cwd}/../demonstrations_downscaled
 stone_height_threshold: 1.5

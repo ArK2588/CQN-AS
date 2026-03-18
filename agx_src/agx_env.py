@@ -12,7 +12,7 @@ from dm_env import StepType, specs
 import agxcave
 from agxcave.agxenvs.utils.parse_cfg import parse_env_cfg
 
-from agx_src.demo_reader import resize_chw_image, standardize_to_agxenv
+from agx_src.demo_reader import resize_chw_image, standardize_to_agxenv, get_stratified_demos_list
 import agxcave.agxtasks.excavator.rock_capturing.config.rock_capturing_cfg as agxrewards
 import agx_src.rewards as rewards_setups
 
@@ -441,11 +441,11 @@ class AGXEnv:
             success=np.array([success], dtype=np.float32),
         )
 
-    def get_demos(self, num_demos: int):
+    def get_demos(self, demos_ratio):
         demo_dir = Path(self._dataset_root)
         pkls = sorted(demo_dir.glob("*.pkl"))
-        demos = []
-        for i, p in enumerate(pkls[:num_demos]):
+        sampled_pkls = get_stratified_demos_list(pkls, demos_ratio)
+        for i, p in enumerate(sampled_pkls):
             with p.open("rb") as f:
                 traj = pickle.load(f)
             traj = [standardize_to_agxenv(s) for s in traj]
