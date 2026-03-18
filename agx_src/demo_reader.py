@@ -1,4 +1,4 @@
-# import cv2
+import cv2
 import numpy as np
 
 def resize_chw_image(img, out_size):

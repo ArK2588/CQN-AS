@@ -272,7 +272,10 @@ class Workspace:
                     log(f"reward/{key}", float(np.mean(values)))
 
         # saving policy
-        self.save_policy()
+        try:
+            self.save_policy()
+        except:
+            print("Unable to save policy!")
 
     def train(self):
         # predicates

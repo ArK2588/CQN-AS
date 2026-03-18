@@ -444,9 +444,10 @@ class AGXEnv:
     def get_demos(self, demos_ratio):
         demo_dir = Path(self._dataset_root)
         pkls = sorted(demo_dir.glob("*.pkl"))
-        sampled_pkls = get_stratified_demos_list(pkls, demos_ratio)
-        for i, p in enumerate(sampled_pkls):
-            with p.open("rb") as f:
+        sampled_pkls_names = get_stratified_demos_list(pkls, demos_ratio)
+        sampled_pkls = [demo_dir / sampled_pkl for sampled_pkl in sampled_pkls_names]
+        for pkl in sampled_pkls:
+            with open(pkl,"rb") as f:
                 traj = pickle.load(f)
             traj = [standardize_to_agxenv(s) for s in traj]
             demo = self.convert_demo_to_timesteps(traj)
